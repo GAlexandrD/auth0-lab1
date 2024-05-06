@@ -1,93 +1,30 @@
-const uuid = require('uuid');
+const jwt = require('jsonwebtoken')
 const express = require('express');
-const onFinished = require('on-finished');
 const bodyParser = require('body-parser');
 const path = require('path');
 const port = 3000;
-const fs = require('fs');
 
 const app = express();
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 const SESSION_KEY = 'Authorization';
+const ACCESS_TOKEN_SECRET = 'access secret'
 
-class Session {
-    #sessions = {}
-
-    constructor() {
-        try {
-            this.#sessions = fs.readFileSync('./sessions.json', 'utf8');
-            this.#sessions = JSON.parse(this.#sessions.trim());
-
-            console.log(this.#sessions);
-        } catch(e) {
-            this.#sessions = {};
-        }
-    }
-
-    #storeSessions() {
-        fs.writeFileSync('./sessions.json', JSON.stringify(this.#sessions), 'utf-8');
-    }
-
-    set(key, value) {
-        if (!value) {
-            value = {};
-        }
-        this.#sessions[key] = value;
-        this.#storeSessions();
-    }
-
-    get(key) {
-        return this.#sessions[key];
-    }
-
-    init(res) {
-        const sessionId = uuid.v4();
-        this.set(sessionId);
-
-        return sessionId;
-    }
-
-    destroy(req, res) {
-        const sessionId = req.sessionId;
-        delete this.#sessions[sessionId];
-        this.#storeSessions();
-    }
-}
-
-const sessions = new Session();
 
 app.use((req, res, next) => {
-    let currentSession = {};
-    let sessionId = req.get(SESSION_KEY);
-
-    if (sessionId) {
-        currentSession = sessions.get(sessionId);
-        if (!currentSession) {
-            currentSession = {};
-            sessionId = sessions.init(res);
-        }
-    } else {
-        sessionId = sessions.init(res);
-    }
-
-    req.session = currentSession;
-    req.sessionId = sessionId;
-
-    onFinished(req, () => {
-        const currentSession = req.session;
-        const sessionId = req.sessionId;
-        sessions.set(sessionId, currentSession);
-    });
-
-    next();
+    let token = req.get(SESSION_KEY);
+    if (!token) return next()
+    const isVerified = jwt.verify(token, ACCESS_TOKEN_SECRET)
+    if (!isVerified) return next()
+    req.user = jwt.decode(token)
+    next()
 });
 
 app.get('/', (req, res) => {
-    if (req.session.username) {
+    if (req.user) {
         return res.json({
-            username: req.session.username,
+            username: req.user.username,
             logout: 'http://localhost:3000/logout'
         })
     }
@@ -95,7 +32,6 @@ app.get('/', (req, res) => {
 })
 
 app.get('/logout', (req, res) => {
-    sessions.destroy(req, res);
     res.redirect('/');
 });
 
@@ -103,12 +39,12 @@ const users = [
     {
         login: 'Login',
         password: 'Password',
-        username: 'Username',
+        username: 'user1',
     },
     {
         login: 'Login1',
         password: 'Password1',
-        username: 'Username1',
+        username: 'user2',
     }
 ]
 
@@ -123,10 +59,9 @@ app.post('/api/login', (req, res) => {
     });
 
     if (user) {
-        req.session.username = user.username;
-        req.session.login = user.login;
+        const token = jwt.sign({ username: user.username, login: user.login }, ACCESS_TOKEN_SECRET)
 
-        res.json({ token: req.sessionId });
+        res.json({ token });
     }
 
     res.status(401).send();

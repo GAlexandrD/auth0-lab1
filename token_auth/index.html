@@ -122,7 +122,7 @@
         let token;
 
         try {
-            token = JSON.parse(session).token;
+            token = session;
         } catch(e) {}
 
         if (token) {
@@ -173,8 +173,8 @@
                     password
                 }
             }).then((response) => {
-                const { username } =  response.data;
-                sessionStorage.setItem('session', JSON.stringify(response.data));
+                const { token } =  response.data;
+                sessionStorage.setItem('session', token);
                 location.reload();
             }).catch((response) => {
                 loginErrorMsg.style.opacity = 1;
